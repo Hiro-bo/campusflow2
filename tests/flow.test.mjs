@@ -67,3 +67,33 @@ test('AI中文结束时间仍需要真实区间依据',()=>{const s='2026年10�
 test('演示日期随发布日期跨月生成且保持未来',()=>{const s=makeSamples('2026-10-30');const ts=parseRules(s[0].text,s[0].referenceDate).tasks;assert.equal(ts[0].when,'2026-11-02T17:00');assert.equal(ts[1].when,'2026-11-03T14:00');assert.equal(ts.length,3)});
 
 test('活动时间另行通知的补充句不新增行动',()=>{const ts=parseRules(samples[2].text,ref).tasks;assert.equal(ts.length,1);assert.equal(ts[0].kind,'todo');assert.equal(ts[0].when,null)});
+
+test('AI相对日期与全角冒号空格核验通过（观影活动本周六晚上18： 30-21： 00）',()=>{
+  const source = '本周六晚上18： 30-21： 00，我们学院同学原则上都参加，都去二课上报名，不去的同学找班长请假';
+  // ref is 2026-10-20 (Tuesday). Tuesday + 4 days = Saturday 2026-10-24
+  const payload = {
+    tasks: [{
+      title: '四渡赤水观影活动',
+      kind: 'event',
+      when: '2026-10-24T18:30',
+      end: '2026-10-24T21:00',
+      location: '',
+      category: '活动',
+      evidence: {
+        title: '我们学院同学原则上都参加',
+        when: '本周六晚上18： 30',
+        end: '21： 00',
+        location: ''
+      }
+    }]
+  };
+  const res = validateAI(payload, source, ref);
+  assert.equal(res.tasks[0].when, '2026-10-24T18:30');
+  assert.equal(res.tasks[0].end, '2026-10-24T21:00');
+  assert.equal(res.tasks[0].warnings.length, 0);
+});
+
+test('全角冒号带空格时刻可提取',()=>{
+  const ds = datesIn('10月28日18： 30开会', ref);
+  assert.equal(ds[0].value, '2026-10-28T18:30');
+});

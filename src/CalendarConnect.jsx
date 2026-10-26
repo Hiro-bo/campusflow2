@@ -1,11 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import {X,Download,Copy,ExternalLink,RefreshCw,CalendarDays,Link,ShieldCheck} from 'lucide-react';
 import {calendarTasks,toLocalCalendar,serviceBase,subscriptionLinks} from '../lib/calendar.mjs';
+import {safeStorage,safeTimeoutSignal,safeOrigin} from '../lib/compat.mjs';
 const CONNECTION_KEY='campusflow-calendar-connection-v1';
 const STATIC_SITE=import.meta.env.VITE_STATIC_SITE==='true';
-function savedConnection(){try{const c=JSON.parse(localStorage.getItem(CONNECTION_KEY));if(c&&/^[A-Za-z0-9_-]{43}$/.test(c.id)&&/^[A-Za-z0-9_-]{43}$/.test(c.writeToken))return {...c,base:serviceBase(c.base)};}catch{}return null;}
+function savedConnection(){try{const raw=safeStorage.getItem(CONNECTION_KEY);if(!raw)return null;const c=JSON.parse(raw);if(c&&/^[A-Za-z0-9_-]{43}$/.test(c.id)&&/^[A-Za-z0-9_-]{43}$/.test(c.writeToken))return {...c,base:serviceBase(c.base)};}catch{}return null;}
 async function request(base,route,{method='GET',body,token}={}){
- const r=await fetch(base+route,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
+ const signal=safeTimeoutSignal(15000);
+ const r=await fetch(base+route,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{}),...(signal?{signal}:{})});
  let data;try{data=await r.json();}catch{throw Error('这个地址没有可用的日历订阅接口。');}
  if(!r.ok)throw Error(data.error||'订阅服务请求失败');return data;
 }
@@ -13,13 +15,13 @@ function download(text){const url=URL.createObjectURL(new Blob([text],{type:'tex
 
 export default function CalendarConnect({tasks,ready,onLog}){
  const [open,setOpen]=useState(false),[tab,setTab]=useState('import'),[reminder,setReminder]=useState(()=>savedConnection()?.reminderMinutes||0),[device,setDevice]=useState('iphone'),[feedback,setFeedback]=useState(''),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false);
- const [connection,setConnection]=useState(savedConnection),[baseInput,setBaseInput]=useState(STATIC_SITE?'':window.location.origin),[sync,setSync]=useState(''),[syncedAt,setSyncedAt]=useState('');
+ const [connection,setConnection]=useState(savedConnection),[baseInput,setBaseInput]=useState(STATIC_SITE?'':safeOrigin()),[sync,setSync]=useState(''),[syncedAt,setSyncedAt]=useState('');
  const dialog=useRef(null),trigger=useRef(null),active=useRef(connection),queue=useRef(Promise.resolve());
  const latest=useRef(null);latest.current={tasks:calendarTasks(tasks),reminderMinutes:reminder};
  const snapshot=JSON.stringify(latest.current);
  const result=toLocalCalendar(tasks,{reminderMinutes:reminder});
  useEffect(()=>{active.current=connection;},[connection]);
- useEffect(()=>{if(connection)try{localStorage.setItem(CONNECTION_KEY,JSON.stringify({...connection,reminderMinutes:reminder}));}catch{setFeedback('无法保存提醒设置，请先导出日历并检查浏览器存储。');}},[connection,reminder]);
+ useEffect(()=>{if(connection){const ok=safeStorage.setItem(CONNECTION_KEY,JSON.stringify({...connection,reminderMinutes:reminder}));if(!ok)setFeedback('无法保存提醒设置，请先导出日历并检查浏览器存储。');}},[connection,reminder]);
  useEffect(()=>{
   if(!open)return;const previous=document.activeElement;dialog.current?.querySelector('button')?.focus();
   function key(e){if(e.key==='Escape'){setOpen(false);return;}if(e.key!=='Tab')return;const controls=[...dialog.current.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(x=>x.offsetParent!==null);const first=controls[0],last=controls.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}
@@ -43,13 +45,13 @@ export default function CalendarConnect({tasks,ready,onLog}){
    const config=await request(base,'/api/calendar/config');if(!config.subscriptions)throw Error('这个服务暂不支持日历订阅。');
    const d=await request(base,'/api/calendars',{method:'POST',body:latest.current});
    c={base,id:d.id,writeToken:d.writeToken};subscriptionLinks(base,c.id);
-   try{localStorage.setItem(CONNECTION_KEY,JSON.stringify(c));}catch{await request(base,'/api/calendars/'+c.id,{method:'DELETE',token:c.writeToken});throw Error('浏览器无法保存订阅管理信息，已撤销新订阅。');}
+   const ok=safeStorage.setItem(CONNECTION_KEY,JSON.stringify(c));if(!ok){await request(base,'/api/calendars/'+c.id,{method:'DELETE',token:c.writeToken});throw Error('浏览器无法保存订阅管理信息，已撤销新订阅。');}
    active.current=c;setConnection(c);setSyncedAt(d.updatedAt);setFeedback('订阅地址已创建，请添加到你的日历。');onLog('创建日历订阅',`${latest.current.tasks.length} 项；仅同步日历字段`);
   }catch(e){setFeedback('连接失败：'+(e.name==='TimeoutError'?'服务响应超时，请重试。':e.message));}finally{setBusy(false);}
  }
  async function revoke(){
   if(!connection)return;const c=connection;setBusy(true);active.current=null;setFeedback('');
-  try{await queue.current.catch(()=>{});await request(c.base,'/api/calendars/'+c.id,{method:'DELETE',token:c.writeToken});localStorage.removeItem(CONNECTION_KEY);setConnection(null);setSync('');setSyncedAt('');setConsent(false);setFeedback('已撤销订阅地址。请在日历 App 中移除旧订阅；已下载的副本不会被远程删除。');onLog('撤销日历订阅','远程地址已失效');}
+  try{await queue.current.catch(()=>{});await request(c.base,'/api/calendars/'+c.id,{method:'DELETE',token:c.writeToken});safeStorage.removeItem(CONNECTION_KEY);setConnection(null);setSync('');setSyncedAt('');setConsent(false);setFeedback('已撤销订阅地址。请在日历 App 中移除旧订阅；已下载的副本不会被远程删除。');onLog('撤销日历订阅','远程地址已失效');}
   catch(e){active.current=c;setFeedback('撤销失败，订阅仍然有效：'+e.message);}finally{setBusy(false);}
  }
  async function copy(){try{await navigator.clipboard.writeText(subscriptionLinks(connection.base,connection.id).https);setFeedback('订阅地址已复制。请勿公开分享这个地址。');}catch{setFeedback('无法自动复制，请长按或选中下面的订阅地址复制。');}}
