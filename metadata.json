@@ -1,0 +1,8 @@
+{
+  "name": "知行 CampusFlow",
+  "description": "校园通知智能提取与任务日历管理工作台",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
