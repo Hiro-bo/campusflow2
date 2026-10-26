@@ -2,6 +2,7 @@
 import {useState,useEffect,useRef} from 'react';
 import {ArrowUpRight,ArrowRight,Check,ChevronLeft,ChevronRight,Inbox,LayoutGrid,CalendarDays,BookOpen,History,Plus,Download,Upload,Search,FileText,Zap,ShieldCheck,AlertTriangle,X,CheckCircle2,Trash2,Pencil,ExternalLink,Copy,Tv,Clock,Settings,Sparkles,Key,Eye,EyeOff} from 'lucide-react';
 import {VERSION,CATEGORIES,chinaToday,parseRules,validateAI,SYSTEM_PROMPT,blankTask,validDate,duplicateKey,taskIssues,toICS,validateBackup} from '../lib/flow.mjs';
+import {parseOnline,testDeepSeek} from '../lib/ai.mjs';
 import {samples} from '../lib/samples.mjs';
 import CalendarConnect from './CalendarConnect.jsx';
 const STATIC_SITE=import.meta.env.VITE_STATIC_SITE === 'true';
@@ -50,6 +51,8 @@ export default function Home(){
          if(d.aiConfigured||localStorage.getItem('cf-deepseek-key'))setAiReady(true);
        })
        .catch(()=>{});
+   }else{
+     if(localStorage.getItem('cf-deepseek-key'))setAiReady(true);
    }
  },[]);
 
@@ -72,18 +75,23 @@ export default function Home(){
    setApiTesting(true);
    setApiTestResult(null);
    try{
-     const res=await fetch('/api/deepseek/test',{
-       method:'POST',
-       headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({
-         apiKey:deepseekKey.trim(),
-         model:deepseekModel,
-         baseUrl:deepseekBaseUrl.trim()
-       })
-     });
-     const data=await res.json();
-     if(!res.ok)throw new Error(data.error||'连接测试失败');
-     setApiTestResult({success:true,message:data.message||`连接成功！模型：${data.model}`});
+     if(!STATIC_SITE){
+       const res=await fetch('/api/deepseek/test',{
+         method:'POST',
+         headers:{'Content-Type':'application/json'},
+         body:JSON.stringify({
+           apiKey:deepseekKey.trim(),
+           model:deepseekModel,
+           baseUrl:deepseekBaseUrl.trim()
+         })
+       });
+       const data=await res.json();
+       if(!res.ok)throw new Error(data.error||'连接测试失败');
+       setApiTestResult({success:true,message:data.message||`连接成功！模型：${data.model}`});
+     }else{
+       await testDeepSeek({key:deepseekKey.trim(),model:deepseekModel,baseUrl:deepseekBaseUrl.trim()});
+       setApiTestResult({success:true,message:`连接成功！模型：${deepseekModel}`});
+     }
      setAiReady(true);
    }catch(err){
      setApiTestResult({success:false,message:err.message});
@@ -110,7 +118,6 @@ export default function Home(){
  }
 
  async function parse(mode){
-   if(STATIC_SITE&&mode==='ai')return msg('此静态版本不提供在线 AI 接口。请使用下方按钮导入外部 AI 结果。');
    if(!text.trim())return msg('先粘贴一条通知，或选择下方快捷样例。');
    if(mode==='ai'){
      if(!consent)return msg('在线 AI 会把通知正文发送给模型服务，请勾选确认。');
@@ -127,26 +134,40 @@ export default function Home(){
        result=parseRules(text,referenceDate);
      }else{
        const effectiveKey=deepseekKey.trim()||undefined;
-       const r=await fetch('/api/deepseek/parse',{
-         method:'POST',
-         headers:{
-           'Content-Type':'application/json',
-           ...(effectiveKey?{'Authorization':`Bearer ${effectiveKey}`}:{})
-         },
-         body:JSON.stringify({
+       if(STATIC_SITE){
+         if(!effectiveKey){
+           setApiModalOpen(true);
+           throw Error('请先点击设置按钮配置你的 DeepSeek API Key。');
+         }
+         result=await parseOnline({
            text,
            referenceDate,
-           apiKey:effectiveKey,
+           key:effectiveKey,
            model:deepseekModel,
            baseUrl:deepseekBaseUrl.trim()||undefined
-         })
-       });
-       result=await r.json();
-       if(!r.ok){
-         if(r.status===503||(result.error&&(result.error.includes('API Key')||result.error.includes('尚未配置')))){
-           setApiModalOpen(true);
+         });
+       }else{
+         const r=await fetch('/api/deepseek/parse',{
+           method:'POST',
+           headers:{
+             'Content-Type':'application/json',
+             ...(effectiveKey?{'Authorization':`Bearer ${effectiveKey}`}:{})
+           },
+           body:JSON.stringify({
+             text,
+             referenceDate,
+             apiKey:effectiveKey,
+             model:deepseekModel,
+             baseUrl:deepseekBaseUrl.trim()||undefined
+           })
+         });
+         result=await r.json();
+         if(!r.ok){
+           if(r.status===503||(result.error&&(result.error.includes('API Key')||result.error.includes('尚未配置')))){
+             setApiModalOpen(true);
+           }
+           throw Error(result.error);
          }
-         throw Error(result.error);
        }
      }
      setDrafts(result.tasks.map(t=>({...t,id:uid(),status:'todo',source:text,engine:mode})));
@@ -234,23 +255,19 @@ export default function Home(){
    <button className="button primary" disabled={busy||!ready} onClick={()=>parse('rules')} title="使用本地离线规则提取待办">
      <Zap size={15}/><span>{busy&&engine==='rules'?'提取中…':'快速提取'}</span><ArrowRight size={14}/>
    </button>
-   {!STATIC_SITE&&(
-     <button className="button bili-ai-btn" disabled={busy} onClick={()=>parse('ai')} title="调用 DeepSeek v4.1Flash 大模型智能提取">
-       <Sparkles size={15}/><span>{busy&&engine==='ai'?'提取中…':'DeepSeek AI'}</span>
-     </button>
-   )}
-   {!STATIC_SITE&&(
-     <button className="icon-button api-config-btn" title="DeepSeek API 接口配置" aria-label="DeepSeek API 接口配置" onClick={()=>{setNotice('');setApiModalOpen(true);}}>
-       <Settings size={18}/>
-       {(deepseekKey||aiReady)&&<span className="api-active-dot" title="DeepSeek API 已配置"/>}
-     </button>
-   )}
+   <button className="button bili-ai-btn" disabled={busy} onClick={()=>parse('ai')} title="调用 DeepSeek 在线大模型智能提取">
+     <Sparkles size={15}/><span>{busy&&engine==='ai'?'提取中…':'DeepSeek AI'}</span>
+   </button>
+   <button className="icon-button api-config-btn" title="DeepSeek API 接口配置" aria-label="DeepSeek API 接口配置" onClick={()=>{setNotice('');setApiModalOpen(true);}}>
+     <Settings size={18}/>
+     {(deepseekKey||aiReady)&&<span className="api-active-dot" title="DeepSeek API 已配置"/>}
+   </button>
  </div>
  
  <p className="mode-caption">
-   <span className="mini-dot"/> {STATIC_SITE?'当前使用本地规则；AI 结果可通过下方按钮导入。':`当前快捷提取使用本地规则 · DeepSeek 在线 AI ${(deepseekKey||aiReady)?'已就绪':'待配置'}`}
+   <span className="mini-dot"/> {`当前快捷提取使用本地离线规则 · DeepSeek 在线 AI ${(deepseekKey||aiReady)?'已就绪':'待配置 (点击齿轮填入 Key)'}`}
  </p>
- {!STATIC_SITE&&<label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>在线 AI 模式下，同意将此通知正文发送给模型服务；已移除个人敏感信息。</label>}
+ <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>在线 AI 模式下，同意将此通知正文发送给模型服务；已移除个人敏感信息。</label>
  
  <div className="sample-box"><span>💡 快捷样例试用：</span><div>{samples.map((s,i)=><button key={s.label} onClick={()=>{setText(s.text);setSourceLabel(s.source);setReferenceDate(s.referenceDate);msg(s.source);}}>{s.label}<ArrowUpRight size={12}/></button>)}</div></div>
  
