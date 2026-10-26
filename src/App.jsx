@@ -14,6 +14,24 @@ const kindLabels={todo:'待办事项',deadline:'截止任务',event:'定时活�
 const uid=()=>safeUid();
 function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
 
+function getNoticeType(text){
+  if(!text)return 'info';
+  if(/失败|错误|无效|必须|请先|先填写|不可用|请小于|超过|已阻止|无法/.test(text))return 'warning';
+  if(/已保存|成功|已核验|已复制|已导出|得到|已撤销|加入/.test(text))return 'success';
+  return 'info';
+}
+
+function getNoticeTag(text){
+  const type=getNoticeType(text);
+  if(type==='warning')return '操作提示';
+  if(type==='success'){
+    if(text.includes('已保存'))return '保存成功';
+    if(text.includes('得到'))return '提取完成';
+    return '操作成功';
+  }
+  return '系统提示';
+}
+
 export default function Home(){
  const [view,setView]=useState('inbox'),[text,setText]=useState(''),[sourceLabel,setSourceLabel]=useState('粘贴的通知'),[referenceDate,setReferenceDate]=useState('2026-10-20');
  const [tasks,setTasks]=useState([]),[logs,setLogs]=useState([]),[ready,setReady]=useState(false),[drafts,setDrafts]=useState([]),[draftSource,setDraftSource]=useState(''),[engine,setEngine]=useState('rules'),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[storageError,setStorageError]=useState('');
@@ -69,6 +87,12 @@ export default function Home(){
    document.addEventListener('keydown',key);
    return()=>document.removeEventListener('keydown',key);
  },[modal,apiModalOpen]);
+
+  useEffect(()=>{
+    if(!notice)return;
+    const timer=setTimeout(()=>{setNotice('');},4500);
+    return()=>clearTimeout(timer);
+  },[notice]);
 
  function log(action,detail){setLogs(old=>[...old,{id:uid(),time:new Date().toISOString(),action,detail}].slice(-200));}
  function msg(s){setNotice(s);}
@@ -250,7 +274,7 @@ export default function Home(){
  <main><header className="topbar"><span>校园日程 <span className="slash">/</span> {nav.find(x=>x[0]===view)?.[2]}</span><div><span className="local-dot"/> 数据保存在此浏览器 <button className="icon-button" aria-label="查看使用说明" onClick={()=>setView('guide')}><BookOpen size={16}/></button></div></header><div className="page">
  {storageError&&<div role="alert" className="error-banner">{storageError}<button onClick={backup}>导出当前备份</button><button onClick={()=>{download('CampusFlow-recovery.txt',safeStorage.getItem(KEY)||'','text/plain');}}>导出旧数据</button></div>}
  <div className="calendar-connect-entry" style={{display:view==='tasks'||view==='calendar'?'flex':'none'}}><CalendarConnect tasks={tasks} ready={ready&&!storageError} onLog={log}/></div><div className="page-heading"><div><span className="bili-badge">{view==='inbox'?'智能整理':view==='tasks'?'任务日程':view==='calendar'?'月度视图':view==='records'?'操作日志':'帮助中心'}</span><h1>{view==='inbox'?'通知整理工作台':view==='tasks'?'我的待办与日程':view==='calendar'?'时间安排日历':view==='records'?'本地操作记录':'CampusFlow 使用说明'}</h1><p className="subtitle">{view==='inbox'?'粘贴群消息、邮件或教务公告，自动提取关键时间与待办，核对后存入日程':view==='tasks'?'集中管理全部课程、作业与活动，支持按状态筛选与日历同步':view==='calendar'?'全月安排一目了然，智能排查时间重叠冲突':view==='records'?'浏览器本地的解析与修改流水，公开透明随时可溯':'快速了解通知提取、任务管理与手机日历无缝衔接技巧'}</p></div><button className="button primary" onClick={()=>openEditor({...blankTask(),id:uid(),status:'todo',engine:'manual',source:''})}><Plus size={16}/>新建任务</button></div>
- {notice&&<div className="notice" role="status"><span>{notice}</span>{undo&&<button onClick={()=>{if(!tasks.some(t=>t.id===undo.id)){setTasks(old=>[...old,undo]);log('撤销删除',undo.title);}setUndo(null);msg('已撤销删除。');}}>撤销删除</button>}<button className="icon-button" aria-label="关闭提示" onClick={()=>setNotice('')}><X size={15}/></button></div>}
+
  {view==='inbox'&&<><div className="stats-strip"><div><span className="stat-number">{pending.length.toString().padStart(2,'0')}</span><span>待办事项</span></div><div><span className="stat-number amber">{uncertain.toString().padStart(2,'0')}</span><span>时间待确认</span></div><div><span className="stat-number">{conflicts.toString().padStart(2,'0')}</span><span>存在时间冲突</span></div><div className="stats-last"><ShieldCheck size={24}/><span>原文字句核对<small>每个候选均保留原文出处</small></span></div></div>
  <div className="workbench"><section className="input-panel panel"><div className="section-heading"><span className="step-icon"><FileText size={18}/></span><div><h2>输入通知正文</h2><p>班级群消息、邮件公告或复制的文档文字</p></div><FileText className="heading-icon" size={20}/></div><label className="text-label" htmlFor="noticeText">通知正文 <span>{text.length} / 12000</span></label><textarea id="noticeText" className="notice-input" value={text} onChange={e=>setText(e.target.value)} maxLength={12000} placeholder={'把通知粘贴在这里…\n\n例如：请于2026年10月23日17:00前提交电路实验报告。'}/><div className="input-meta"><button className="text-button" onClick={()=>txtInput.current.click()}><Upload size={14}/>导入 TXT</button><span title={sourceLabel}>{sourceLabel}</span></div><input ref={txtInput} type="file" accept=".txt,text/plain" hidden onChange={readText}/><div className="date-field"><label htmlFor="noticeDate">通知发布日期</label><input id="noticeDate" type="date" value={referenceDate} onChange={e=>setReferenceDate(e.target.value)}/><small>用于补全年份，含糊日期仍需确认</small></div>
  
@@ -326,10 +350,70 @@ export default function Home(){
  <input ref={backupInput} type="file" accept=".json,application/json" hidden onChange={restore}/><footer className="footer"><span>知行 CampusFlow · 校园日程工作台</span><span>条理生活 · 清爽高效</span><span>MVP {VERSION}</span></footer></div></main>
 
  {/* 任务核对与编辑 Modal */}
- {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(null);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle"><div className="modal-heading"><div><h2>核对任务详情</h2><p className="muted small">核实时间与地点，确认后存入清单</p></div><button className="icon-button" autoFocus aria-label="关闭编辑" onClick={()=>setModal(null)}><X/></button></div>{notice&&<p className="modal-message" role="alert">{notice}</p>}<div className="editor-columns"><div className="editor-fields"><label>任务名称<input maxLength={120} value={modal.task.title} onChange={e=>patch('title',e.target.value)}/></label><div className="form-row"><label>任务类型<select value={modal.task.kind} onChange={e=>patch('kind',e.target.value)}>{Object.entries(kindLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label>分类<select value={modal.task.category} onChange={e=>patch('category',e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label></div><div className="field-label">{modal.task.kind==='event'?'开始时间':'截止 / 提醒日期'}<button className="evidence-button" disabled={!modal.task.evidence.when} onClick={()=>setQuote(modal.task.evidence.when)}>查看依据</button></div><div className="form-row"><input aria-label="任务日期" type="date" value={modal.task.when?.slice(0,10)||''} onChange={e=>patch('when',e.target.value?e.target.value+(modal.task.when?.slice(10)||''):null)}/><input aria-label="任务时刻" type="time" disabled={!modal.task.when} value={modal.task.when?.slice(11)||''} onChange={e=>patch('when',modal.task.when.slice(0,10)+(e.target.value?'T'+e.target.value:''))}/></div><p className="small muted">时间留空表示仅日期，不会自动补成午夜。日期留空表示待确认。</p>{modal.task.kind==='event'&&<label>结束时间（冲突检测需要）<input type="datetime-local" value={modal.task.end||''} onChange={e=>patch('end',e.target.value||null)}/></label>}<label>地点 <button className="evidence-button" disabled={!modal.task.evidence.location} onClick={()=>setQuote(modal.task.evidence.location)}>查看依据</button><input value={modal.task.location} maxLength={100} onChange={e=>patch('location',e.target.value)} placeholder="原文未写，可留空"/></label>{modal.task.warnings?.length>0&&<div className="issues">{modal.task.warnings.map((s,i)=><p key={i}>{s}</p>)}</div>}{taskIssues(modal.task,tasks).map((s,i)=><p className="warning-text" key={i}><AlertTriangle size={13}/>{s}</p>)}<p className="small muted">手动修改：{modal.task.manual?.map(f=>({title:'名称',kind:'类型',when:'时间',end:'结束时间',location:'地点',category:'分类'}[f]||f)).join('、')||'无'}</p></div><div className="source-panel"><h3><FileText size={16}/>通知原文<button className="evidence-button" onClick={()=>setQuote(modal.task.evidence.title)}>定位任务依据</button></h3><div className="source-text">{(()=>{const source=modal.task.source||'此任务为手动添加，请核对你的信息来源。';const pos=quote?source.indexOf(quote):-1;return pos>=0?<>{source.slice(0,pos)}<mark>{quote}</mark>{source.slice(pos+quote.length)}</>:source;})()}</div><p className="small muted">解析方式：{engineLabels[modal.task.engine]||modal.task.engine}。引用命中不代表理解正确。</p></div></div><div className="modal-footer"><button type="button" className={`bili-confirm-btn ${confirmed?'confirmed':''}`} onClick={()=>setConfirmed(!confirmed)} aria-pressed={confirmed} role="checkbox" aria-checked={confirmed}><span className="bili-confirm-checkbox">{confirmed?<Check size={13} strokeWidth={3}/>:null}</span><span className="bili-confirm-text">我已核对原文和修改内容，理解待确认项</span><span className="bili-confirm-tag">{confirmed?'已核对':'点击确认'}</span></button><button className="button primary" onClick={saveTask} disabled={!confirmed}><Check size={16}/>确认保存</button></div></section></div>}
+ {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(null);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle"><div className="modal-heading"><div><h2>核对任务详情</h2><p className="muted small">核实时间与地点，确认后存入清单</p></div><button className="icon-button" autoFocus aria-label="关闭编辑" onClick={()=>setModal(null)}><X/></button></div>{notice&&<p className="modal-message" role="alert">{notice}</p>}<div className="editor-columns"><div className="editor-fields"><label>任务名称<input maxLength={120} value={modal.task.title} onChange={e=>patch('title',e.target.value)}/></label><div className="form-row"><label>任务类型<select value={modal.task.kind} onChange={e=>patch('kind',e.target.value)}>{Object.entries(kindLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label>分类<select value={modal.task.category} onChange={e=>patch('category',e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label></div><div className="field-label">{modal.task.kind==='event'?'开始时间':'截止 / 提醒日期'}<button className="evidence-button" disabled={!modal.task.evidence.when} onClick={()=>setQuote(modal.task.evidence.when)}>查看依据</button></div><div className="form-row"><input aria-label="任务日期" type="date" value={modal.task.when?.slice(0,10)||''} onChange={e=>patch('when',e.target.value?e.target.value+(modal.task.when?.slice(10)||''):null)}/><input aria-label="任务时刻" type="time" disabled={!modal.task.when} value={modal.task.when?.slice(11)||''} onChange={e=>patch('when',modal.task.when.slice(0,10)+(e.target.value?'T'+e.target.value:''))}/></div><p className="small muted">时间留空表示仅日期，不会自动补成午夜。日期留空表示待确认。</p>{modal.task.kind==='event'&&<label>结束时间（冲突检测需要）<input type="datetime-local" value={modal.task.end||''} onChange={e=>patch('end',e.target.value||null)}/></label>}<label>地点 <button className="evidence-button" disabled={!modal.task.evidence.location} onClick={()=>setQuote(modal.task.evidence.location)}>查看依据</button><input value={modal.task.location} maxLength={100} onChange={e=>patch('location',e.target.value)} placeholder="原文未写，可留空"/></label>{modal.task.warnings?.length>0&&<div className="issues">{modal.task.warnings.map((s,i)=><p key={i}>{s}</p>)}</div>}{taskIssues(modal.task,tasks).map((s,i)=><p className="warning-text" key={i}><AlertTriangle size={13}/>{s}</p>)}<p className="small muted">手动修改：{modal.task.manual?.map(f=>({title:'名称',kind:'类型',when:'时间',end:'结束时间',location:'地点',category:'分类'}[f]||f)).join('、')||'无'}</p></div><div className="source-panel"><h3><FileText size={16}/>通知原文<button className="evidence-button" onClick={()=>setQuote(modal.task.evidence.title)}>定位任务依据</button></h3><div className="source-text">{(()=>{const source=modal.task.source||'此任务为手动添加，请核对你的信息来源。';const pos=quote?source.indexOf(quote):-1;return pos>=0?<>{source.slice(0,pos)}<mark>{quote}</mark>{source.slice(pos+quote.length)}</>:source;})()}</div><p className="small muted">解析方式：{engineLabels[modal.task.engine]||modal.task.engine}。引用命中不代表理解正确。</p></div></div><div className="modal-footer"><button type="button" className={`bili-confirm-btn ${confirmed?'confirmed':''}`} onClick={()=>setConfirmed(!confirmed)} aria-pressed={confirmed} role="checkbox" aria-checked={confirmed}><div className="bili-confirm-left"><span className="bili-confirm-checkbox">{confirmed?<Check size={13} strokeWidth={3}/>:null}</span><span className="bili-confirm-text">我已核对原文和修改内容，理解待确认项</span></div><span className="bili-confirm-tag">{confirmed?'已核对':'点击确认'}</span></button><button className="button primary modal-save-btn" onClick={saveTask} disabled={!confirmed}><Check size={16}/>确认保存</button></div></section></div>}
 
  {/* DeepSeek API 配置与调用设置 Modal */}
  {apiModalOpen&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setApiModalOpen(false);}}><section className="modal api-config-modal" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle"><div className="modal-heading"><div><h2 id="apiModalTitle" className="api-modal-title"><span className="bili-badge">API</span> DeepSeek 接口连接配置</h2><p className="muted small">参照官方文档规范，支持 deepseek-flash、deepseek-v4-pro、deepseek-chat 与 deepseek-reasoner</p></div><button className="icon-button" aria-label="关闭设置" onClick={()=>setApiModalOpen(false)}><X/></button></div><div className="api-modal-body"><div className="api-status-banner"><div className="api-status-indicator"><span className={`status-pill ${deepseekKey||aiReady?'online':'offline'}`}>{deepseekKey||aiReady?'● DeepSeek 已就绪':'○ 尚未配置 API Key'}</span><span className="api-status-sub">{deepseekKey?'（使用前端本地保存的密钥）':aiReady?'（使用服务端环境变量配置）':'（填入密钥即可直接调用在线大模型）'}</span></div></div><div className="api-form-group"><label htmlFor="deepseekUrlInput" className="api-label"><span>API 基础地址 (Base URL)</span><a href="https://api-docs.deepseek.com/zh-cn/" target="_blank" rel="noreferrer" className="api-link">DeepSeek 官方文档 <ExternalLink size={12}/></a></label><input id="deepseekUrlInput" type="text" value={deepseekBaseUrl} onChange={e=>setDeepseekBaseUrl(e.target.value)} placeholder="https://api.deepseek.com" className="api-input-plain"/><p className="api-hint">官方接口地址为 https://api.deepseek.com，也支持自定义中转或兼容端点。</p></div><div className="api-form-group"><label htmlFor="deepseekKeyInput" className="api-label"><span>DeepSeek API Key</span><a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer" className="api-link">前往获取 API Key <ExternalLink size={12}/></a></label><div className="api-input-wrapper"><Key size={16} className="api-input-icon"/><input id="deepseekKeyInput" type={showKey?'text':'password'} value={deepseekKey} onChange={e=>setDeepseekKey(e.target.value)} placeholder="sk-..." className="api-input" autoComplete="off"/><button type="button" className="icon-button key-toggle-btn" onClick={()=>setShowKey(!showKey)} aria-label={showKey?'隐藏密钥':'显示密钥'}>{showKey?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><p className="api-hint">密钥安全保存在你的浏览器本地，通过服务端代理请求，避免暴露到公共网络。</p></div><div className="api-form-group"><label className="api-label" htmlFor="modelSelect"><span>调用模型 (Model)</span></label><select id="modelSelect" className="api-select" value={deepseekModel} onChange={e=>setDeepseekModel(e.target.value)}><option value="deepseek-flash">deepseek-flash (v4.1 Flash 极速推荐 · 响应极快)</option><option value="deepseek-v4-pro">deepseek-v4-pro (v4 Pro 旗舰模型 · 精度更佳)</option><option value="deepseek-chat">deepseek-chat (DeepSeek-V3 · 官方通用对话)</option><option value="deepseek-reasoner">deepseek-reasoner (DeepSeek-R1 · 官方深度推理)</option></select></div><div className="api-test-section"><button type="button" className="button secondary test-api-btn" onClick={handleTestDeepSeek} disabled={apiTesting||(!deepseekKey.trim()&&!aiReady)}><Zap size={15}/> {apiTesting?'正在测试连接…':'测试 API 连通性'}</button>{apiTestResult&&<div className={`api-test-alert ${apiTestResult.success?'success':'error'}`}>{apiTestResult.success?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}<span>{apiTestResult.message}</span></div>}</div><div className="api-endpoint-card"><h4><Tv size={14}/> 开发者 API 接口说明</h4><p>本服务后端同时提供标准 REST API，可通过 curl 或前端脚本调用：</p><div className="api-code-block"><code>POST /api/deepseek/parse</code><span className="api-code-note">请求参数：{`{ "text": "通知正文", "referenceDate": "2026-10-20", "apiKey": "sk-...", "model": "deepseek-flash" }`}</span></div></div></div><div className="modal-footer"><button type="button" className="button secondary" onClick={()=>{setDeepseekKey('');safeStorage.removeItem('cf-deepseek-key');safeStorage.removeItem('cf-deepseek-url');setApiTestResult(null);msg('已清除本地 DeepSeek 配置。');}}>清除配置</button><button type="button" className="button primary" onClick={handleSaveDeepSeek}><Check size={16}/> 保存并应用</button></div></section></div>}
+
+  {/* 醒目轻弹窗通知 Toast / Popup */}
+  {notice&&(
+    <aside className="bili-toast-wrap" role="status" aria-live="polite">
+      <div className={`bili-toast-popup ${getNoticeType(notice)}`}>
+        <div className="bili-toast-icon-wrap">
+          {getNoticeType(notice)==='warning'?(
+            <AlertTriangle size={18} strokeWidth={2.4}/>
+          ):getNoticeType(notice)==='success'?(
+            <CheckCircle2 size={18} strokeWidth={2.4}/>
+          ):(
+            <Sparkles size={18} strokeWidth={2.4}/>
+          )}
+        </div>
+        <div className="bili-toast-content">
+          <span className="bili-toast-tag">{getNoticeTag(notice)}</span>
+          <p className="bili-toast-message">{notice}</p>
+        </div>
+        <div className="bili-toast-actions">
+          {undo&&(
+            <button
+              type="button"
+              className="bili-toast-btn undo-btn"
+              onClick={()=>{
+                if(!tasks.some(t=>t.id===undo.id)){
+                  setTasks(old=>[...old,undo]);
+                  log('撤销删除',undo.title);
+                }
+                setUndo(null);
+                msg('已撤销删除。');
+              }}
+            >
+              撤销删除
+            </button>
+          )}
+          {notice.includes('我的任务')&&view!=='tasks'&&(
+            <button
+              type="button"
+              className="bili-toast-btn jump-btn"
+              onClick={()=>{
+                setView('tasks');
+                setNotice('');
+              }}
+            >
+              去查看 →
+            </button>
+          )}
+          <button
+            type="button"
+            className="bili-toast-close"
+            aria-label="关闭提示"
+            onClick={()=>setNotice('')}
+          >
+            <X size={16}/>
+          </button>
+        </div>
+        <div className="bili-toast-progress-bar" key={notice}/>
+      </div>
+    </aside>
+  )}
 
  </div>;
 }

@@ -50,8 +50,13 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  -webkit-text-size-adjust: 100%;
   background: var(--bg-canvas);
   color: var(--text-main);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -1798,13 +1803,18 @@ button:focus-visible, a:focus-visible {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(24, 25, 28, 0.45);
+  background: rgba(24, 25, 28, 0.48);
   z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 20px 14px;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .modal {
@@ -1812,30 +1822,54 @@ button:focus-visible, a:focus-visible {
   border-radius: 14px;
   max-width: 920px;
   width: 100%;
-  max-height: 92vh;
-  overflow: auto;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  max-height: 90vh;
+  max-height: 90dvh;
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
   border: 1px solid var(--border-line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .modal-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 26px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border-line);
+  flex-shrink: 0;
+  min-width: 0;
+  background: #ffffff;
 }
 
 .modal-heading h2 {
   font-size: 17px;
   color: var(--text-main);
+  line-height: 1.3;
 }
 
 .editor-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 22px;
-  padding: 22px 26px;
+  gap: 20px;
+  padding: 20px 24px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden !important;
+}
+
+.editor-fields {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden !important;
 }
 
 .editor-fields > label, .form-row label {
@@ -1844,19 +1878,28 @@ button:focus-visible, a:focus-visible {
   font-weight: 500;
   color: var(--text-regular);
   margin-bottom: 14px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .editor-fields label > input, .editor-fields label > select {
   display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 6px;
   font-size: 13px;
+  box-sizing: border-box;
 }
 
 .form-row {
   display: flex;
   gap: 10px;
   margin-bottom: 14px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .form-row > * {
@@ -1868,9 +1911,12 @@ button:focus-visible, a:focus-visible {
   margin: 0;
 }
 
-.form-row input {
+.form-row input, .form-row select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 13px;
+  box-sizing: border-box;
 }
 
 .field-label {
@@ -1881,6 +1927,7 @@ button:focus-visible, a:focus-visible {
   font-weight: 500;
   margin-bottom: 8px;
   color: var(--text-regular);
+  min-width: 0;
 }
 
 .evidence-button {
@@ -1888,13 +1935,16 @@ button:focus-visible, a:focus-visible {
   color: var(--bili-blue);
   background: none;
   border: 0;
-  padding: 0;
-  float: right;
+  padding: 2px 4px;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 4px;
 }
 
-.evidence-button:hover {
+.evidence-button:hover:not(:disabled) {
   text-decoration: underline;
+  background: var(--bili-blue-light);
 }
 
 .source-panel {
@@ -1902,15 +1952,21 @@ button:focus-visible, a:focus-visible {
   border: 1px solid var(--border-line);
   border-radius: 10px;
   padding: 16px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden !important;
 }
 
 .source-panel h3 {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   font-size: 13px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   color: var(--text-main);
+  min-width: 0;
 }
 
 .source-panel h3 button {
@@ -1918,14 +1974,26 @@ button:focus-visible, a:focus-visible {
 }
 
 .source-text {
-  font-size: 12px;
-  line-height: 1.9;
+  font-size: 12.5px;
+  line-height: 1.8;
   white-space: pre-wrap;
-  overflow-wrap: anywher;
-  max-height: 330px;
-  overflow: auto;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   color: var(--text-regular);
-  margin-bottom: 18px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-line);
+  border-radius: 8px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 mark {
@@ -1935,24 +2003,30 @@ mark {
   padding: 1px 3px;
   border-radius: 2px;
   font-weight: 600;
+  word-break: break-all;
 }
 
 .modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 26px;
+  padding: 14px 24px;
   border-top: 1px solid var(--border-line);
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
+  flex-shrink: 0;
+  background: #ffffff;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Modal Confirmation Blue Button (Bilibili Theme) */
 .bili-confirm-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 9px 16px;
+  padding: 9px 14px;
   background: var(--bili-blue-light);
   border: 1.5px solid var(--bili-blue);
   border-radius: 8px;
@@ -1963,7 +2037,12 @@ mark {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   box-shadow: 0 1px 4px rgba(0, 174, 236, 0.12);
-  line-height: 1.2;
+  line-height: 1.35;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: left;
 }
 
 .bili-confirm-btn:hover {
@@ -1990,6 +2069,14 @@ mark {
   box-shadow: 0 4px 14px rgba(0, 174, 236, 0.45);
 }
 
+.bili-confirm-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
 .bili-confirm-checkbox {
   width: 18px;
   height: 18px;
@@ -2009,7 +2096,12 @@ mark {
 }
 
 .bili-confirm-text {
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  flex: 1;
+  font-size: 12.5px;
 }
 
 .bili-confirm-tag {
@@ -2021,13 +2113,27 @@ mark {
   color: var(--bili-blue);
   border: 1px solid var(--bili-blue-border);
   transition: all 0.15s ease;
-  margin-left: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .bili-confirm-btn.confirmed .bili-confirm-tag {
   background: rgba(255, 255, 255, 0.25);
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.4);
+}
+
+.modal-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  min-height: 38px;
+  padding: 8px 18px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .confirm-label {
@@ -2043,13 +2149,14 @@ mark {
 }
 
 .modal-message {
-  margin: 14px 26px 0;
+  margin: 14px 24px 0;
   padding: 10px 14px;
   background: #fff7e6;
   color: #d46b08;
   border: 1px solid #ffd591;
   border-radius: 8px;
   font-size: 12px;
+  word-break: break-all;
 }
 
 /* Calendar Connect Modal */
@@ -2226,6 +2333,7 @@ mark {
 @media (max-width: 800px) {
   .app-shell {
     display: block;
+    overflow-x: hidden !important;
   }
   .sidebar {
     position: relative;
@@ -2241,6 +2349,11 @@ mark {
     gap: 6px;
     margin-top: 14px;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sidebar nav::-webkit-scrollbar {
+    display: none;
   }
   .nav-item {
     width: auto;
@@ -2254,14 +2367,17 @@ mark {
   }
   .topbar {
     height: 48px;
-    padding: 0 18px;
+    padding: 0 16px;
     font-size: 11px;
+    overflow-x: hidden !important;
   }
   .page {
-    padding: 20px 16px;
+    padding: 16px 12px 28px;
+    overflow-x: hidden !important;
   }
   .workbench {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
   .stats-strip {
     grid-template-columns: 1fr 1fr;
@@ -2274,15 +2390,346 @@ mark {
   .task-grid {
     grid-template-columns: 1fr;
   }
+
+  /* Modal Mobile Optimization - Strictly Pure Vertical Scroll */
+  .modal-backdrop {
+    padding: 10px 8px;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden !important;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 12px;
+    overflow-x: hidden !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  .modal-heading {
+    padding: 14px 16px;
+  }
+  .modal-heading h2 {
+    font-size: 16px;
+  }
   .editor-columns {
     grid-template-columns: 1fr;
-    padding: 18px;
+    padding: 14px 14px;
+    gap: 16px;
+    overflow-x: hidden !important;
   }
-  .modal-heading, .modal-footer {
-    padding: 16px 18px;
+  .source-panel {
+    padding: 12px 14px;
+    overflow-x: hidden !important;
+  }
+  .source-text {
+    font-size: 12px;
+    line-height: 1.75;
+    max-height: 230px;
+    padding: 8px 10px;
+    overflow-x: hidden !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  .form-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .form-row > * {
+    min-width: 110px;
+    flex: 1 1 110px;
   }
   .modal-footer {
+    padding: 12px 14px;
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+  .bili-confirm-btn {
+    padding: 10px 12px;
+  }
+  .bili-confirm-text {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .modal-save-btn {
+    width: 100%;
+    min-height: 42px;
+    font-size: 14px;
   }
 }
+
+@media (max-width: 480px) {
+  .page {
+    padding: 14px 10px 24px;
+  }
+  .modal-backdrop {
+    padding: 6px 4px;
+  }
+  .modal {
+    border-radius: 10px;
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  .editor-columns {
+    padding: 12px 10px;
+  }
+  .modal-heading, .modal-footer {
+    padding: 12px 12px;
+  }
+}
+
+/* ========================================================
+   Floating Toast Popup (醒目轻弹窗通知)
+   ======================================================== */
+.bili-toast-wrap {
+  position: fixed;
+  top: max(20px, env(safe-area-inset-top, 20px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  width: calc(100% - 32px);
+  max-width: 540px;
+  animation: biliToastDrop 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes biliToastDrop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -24px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.bili-toast-popup {
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: #ffffff;
+  padding: 12px 14px 14px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 174, 236, 0.3);
+  box-shadow:
+    0 16px 36px -4px rgba(0, 174, 236, 0.2),
+    0 6px 18px -2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bili-toast-popup:hover {
+  box-shadow:
+    0 20px 42px -4px rgba(0, 174, 236, 0.26),
+    0 8px 24px -2px rgba(0, 0, 0, 0.1);
+}
+
+/* Toast Variants */
+.bili-toast-popup.success {
+  border-color: rgba(0, 174, 236, 0.38);
+}
+.bili-toast-popup.warning {
+  border-color: rgba(247, 103, 7, 0.38);
+  box-shadow:
+    0 16px 36px -4px rgba(247, 103, 7, 0.2),
+    0 6px 18px -2px rgba(0, 0, 0, 0.08);
+}
+.bili-toast-popup.info {
+  border-color: rgba(251, 114, 153, 0.38);
+  box-shadow:
+    0 16px 36px -4px rgba(251, 114, 153, 0.2),
+    0 6px 18px -2px rgba(0, 0, 0, 0.08);
+}
+
+.bili-toast-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bili-toast-popup.success .bili-toast-icon-wrap {
+  background: #e6f7ff;
+  color: #00aeec;
+}
+.bili-toast-popup.warning .bili-toast-icon-wrap {
+  background: #fff4e6;
+  color: #f76707;
+}
+.bili-toast-popup.info .bili-toast-icon-wrap {
+  background: #fff0f5;
+  color: #fb7299;
+}
+
+.bili-toast-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bili-toast-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  display: inline-block;
+  line-height: 1;
+}
+
+.bili-toast-popup.success .bili-toast-tag {
+  color: #008cb0;
+}
+.bili-toast-popup.warning .bili-toast-tag {
+  color: #d9480f;
+}
+.bili-toast-popup.info .bili-toast-tag {
+  color: #e03166;
+}
+
+.bili-toast-message {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #18191c;
+  line-height: 1.45;
+  margin: 0;
+  word-break: break-word;
+}
+
+.bili-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bili-toast-btn {
+  border: 0;
+  outline: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.bili-toast-btn.jump-btn {
+  background: #00aeec;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 174, 236, 0.3);
+}
+
+.bili-toast-btn.jump-btn:hover {
+  background: #009cd3;
+  transform: translateY(-1px);
+}
+
+.bili-toast-btn.undo-btn {
+  background: #fff0f5;
+  color: #fb7299;
+  border: 1px solid rgba(251, 114, 153, 0.3);
+}
+
+.bili-toast-btn.undo-btn:hover {
+  background: #fb7299;
+  color: #ffffff;
+}
+
+.bili-toast-close {
+  background: transparent;
+  border: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9499a0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.bili-toast-close:hover {
+  background: #f1f2f3;
+  color: #18191c;
+}
+
+.bili-toast-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  animation: toastCountdown 4.5s linear forwards;
+}
+
+.bili-toast-popup.success .bili-toast-progress-bar {
+  background: linear-gradient(90deg, #00aeec, #38d9a9);
+}
+.bili-toast-popup.warning .bili-toast-progress-bar {
+  background: linear-gradient(90deg, #f76707, #ff922b);
+}
+.bili-toast-popup.info .bili-toast-progress-bar {
+  background: linear-gradient(90deg, #fb7299, #f783ac);
+}
+
+@keyframes toastCountdown {
+  0% {
+    width: 100%;
+  }
+  100% {
+    width: 0%;
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 640px) {
+  .bili-toast-wrap {
+    top: max(12px, env(safe-area-inset-top, 12px));
+    width: calc(100% - 20px);
+  }
+  .bili-toast-popup {
+    padding: 10px 10px 12px 10px;
+    gap: 10px;
+    border-radius: 12px;
+  }
+  .bili-toast-icon-wrap {
+    width: 34px;
+    height: 34px;
+  }
+  .bili-toast-message {
+    font-size: 13px;
+  }
+  .bili-toast-btn {
+    padding: 5px 8px;
+    font-size: 11.5px;
+  }
+}
+
