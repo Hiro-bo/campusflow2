@@ -5,6 +5,7 @@ import {VERSION,CATEGORIES,chinaToday,parseRules,validateAI,SYSTEM_PROMPT,blankT
 import {parseOnline,testDeepSeek} from '../lib/ai.mjs';
 import {samples} from '../lib/samples.mjs';
 import {safeStorage,safeUid} from '../lib/compat.mjs';
+import {readAIConfig,saveAIConfig,clearAIConfig,loadLegacyKey} from '../lib/ai-config.mjs';
 import CalendarConnect from './CalendarConnect.jsx';
 const STATIC_SITE=import.meta.env.VITE_STATIC_SITE === 'true';
 const KEY='campusflow-v1';
@@ -35,16 +36,21 @@ function getNoticeTag(text){
 export default function Home(){
  const [view,setView]=useState('inbox'),[text,setText]=useState(''),[sourceLabel,setSourceLabel]=useState('粘贴的通知'),[referenceDate,setReferenceDate]=useState('2026-10-20');
  const [tasks,setTasks]=useState([]),[logs,setLogs]=useState([]),[ready,setReady]=useState(false),[drafts,setDrafts]=useState([]),[draftSource,setDraftSource]=useState(''),[engine,setEngine]=useState('rules'),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[storageError,setStorageError]=useState('');
- const [filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[modal,setModal]=useState(null),[confirmed,setConfirmed]=useState(false),[quote,setQuote]=useState(''),[aiReady,setAiReady]=useState(false),[consent,setConsent]=useState(true),[jsonText,setJsonText]=useState(''),[importOpen,setImportOpen]=useState(false),[month,setMonth]=useState('2026-10'),[undo,setUndo]=useState(null);
+ const [filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[modal,setModal]=useState(null),[confirmed,setConfirmed]=useState(false),[quote,setQuote]=useState(''),[aiReady,setAiReady]=useState(false),[consent,setConsent]=useState(false),[jsonText,setJsonText]=useState(''),[importOpen,setImportOpen]=useState(false),[month,setMonth]=useState('2026-10'),[undo,setUndo]=useState(null);
  
  // DeepSeek API 状态
- const [deepseekKey,setDeepseekKey]=useState(()=>safeStorage.getItem('cf-deepseek-key')||'');
+ const [deepseekKey,setDeepseekKey]=useState(()=>readAIConfig(safeStorage).key);
  const [deepseekModel,setDeepseekModel]=useState(()=>(safeStorage.getItem('cf-deepseek-model')==='v4.1Flash'?'deepseek-flash':safeStorage.getItem('cf-deepseek-model'))||'deepseek-flash');
  const [deepseekBaseUrl,setDeepseekBaseUrl]=useState(()=>safeStorage.getItem('cf-deepseek-url')||'https://api.deepseek.com');
  const [apiModalOpen,setApiModalOpen]=useState(false);
  const [apiTesting,setApiTesting]=useState(false);
  const [apiTestResult,setApiTestResult]=useState(null);
  const [showKey,setShowKey]=useState(false);
+ const [rememberKey,setRememberKey]=useState(()=>readAIConfig(safeStorage).remember);
+ const [legacyKey,setLegacyKey]=useState(()=>readAIConfig(safeStorage).legacy);
+ const apiGeneration=useRef(0);
+ function invalidateAI(){apiGeneration.current++;setAiReady(false);setApiTestResult(null);}
+ function clearConfig(){invalidateAI();const cleared=clearAIConfig(safeStorage);setDeepseekKey('');setRememberKey(false);setLegacyKey(false);setDeepseekModel('deepseek-flash');setDeepseekBaseUrl('https://api.deepseek.com');setShowKey(false);msg(cleared?'已清除本地 AI 配置。':'当前页面配置已清除，但浏览器拒绝删除本地存储，请在浏览器设置中清除本站数据。');}
 
  const txtInput=useRef(null),backupInput=useRef(null);
  useEffect(()=>{
@@ -62,16 +68,7 @@ export default function Home(){
      setStorageError('本地数据无法读取。当前内容不会覆盖旧数据；请先导出诊断备份或恢复有效备份。');
    }
    setReady(true);
-   if(!STATIC_SITE){
-     fetch('/api/config')
-       .then(r=>r.json())
-       .then(d=>{
-         if(d.aiConfigured||safeStorage.getItem('cf-deepseek-key'))setAiReady(true);
-       })
-       .catch(()=>{});
-   }else{
-     if(safeStorage.getItem('cf-deepseek-key'))setAiReady(true);
-   }
+
  },[]);
 
  useEffect(()=>{
@@ -101,47 +98,27 @@ export default function Home(){
  async function handleTestDeepSeek(){
    setApiTesting(true);
    setApiTestResult(null);
+   const generation=apiGeneration.current;
    try{
-     if(!STATIC_SITE){
-       const res=await fetch('/api/deepseek/test',{
-         method:'POST',
-         headers:{'Content-Type':'application/json'},
-         body:JSON.stringify({
-           apiKey:deepseekKey.trim(),
-           model:deepseekModel,
-           baseUrl:deepseekBaseUrl.trim()
-         })
-       });
-       const data=await res.json();
-       if(!res.ok)throw new Error(data.error||'连接测试失败');
-       setApiTestResult({success:true,message:data.message||`连接成功！模型：${data.model}`});
-     }else{
-       await testDeepSeek({key:deepseekKey.trim(),model:deepseekModel,baseUrl:deepseekBaseUrl.trim()});
-       setApiTestResult({success:true,message:`连接成功！模型：${deepseekModel}`});
-     }
+     await testDeepSeek({key:deepseekKey.trim(),model:deepseekModel,baseUrl:deepseekBaseUrl.trim()});
+     if(generation!==apiGeneration.current)return;
+     setApiTestResult({success:true,message:`连接测试成功，模型：${deepseekModel}`});
      setAiReady(true);
-   }catch(err){
-     setApiTestResult({success:false,message:err.message});
+   }catch{
+     if(generation!==apiGeneration.current)return;
+     setAiReady(false);
+     setApiTestResult({success:false,message:'连接测试失败，请检查地址、模型、密钥和网络。'});
    }finally{
      setApiTesting(false);
    }
  }
 
  function handleSaveDeepSeek(){
-   try{
-     if(deepseekKey.trim()){
-       safeStorage.setItem('cf-deepseek-key',deepseekKey.trim());
-       setAiReady(true);
-     }else{
-       safeStorage.removeItem('cf-deepseek-key');
-     }
-     safeStorage.setItem('cf-deepseek-model',deepseekModel);
-     safeStorage.setItem('cf-deepseek-url',deepseekBaseUrl.trim()||'https://api.deepseek.com');
-     msg('DeepSeek API 配置已保存！');
-     setApiModalOpen(false);
-   }catch{
-     msg('配置保存失败，请检查浏览器本地存储。');
-   }
+   const ok=saveAIConfig(safeStorage,{key:deepseekKey,model:deepseekModel,url:deepseekBaseUrl,remember:rememberKey});
+   if(!ok)return msg('本地配置保存失败，密钥仅在当前页面使用；请检查浏览器存储。');
+   setLegacyKey(false);
+   msg(rememberKey?'已选择在此浏览器记住密钥。':'配置已应用，密钥仅在当前页面内存中使用。');
+   setApiModalOpen(false);
  }
 
  async function parse(mode){
@@ -161,41 +138,7 @@ export default function Home(){
        result=parseRules(text,referenceDate);
      }else{
        const effectiveKey=deepseekKey.trim()||undefined;
-       if(STATIC_SITE){
-         if(!effectiveKey){
-           setApiModalOpen(true);
-           throw Error('请先点击设置按钮配置你的 DeepSeek API Key。');
-         }
-         result=await parseOnline({
-           text,
-           referenceDate,
-           key:effectiveKey,
-           model:deepseekModel,
-           baseUrl:deepseekBaseUrl.trim()||undefined
-         });
-       }else{
-         const r=await fetch('/api/deepseek/parse',{
-           method:'POST',
-           headers:{
-             'Content-Type':'application/json',
-             ...(effectiveKey?{'Authorization':`Bearer ${effectiveKey}`}:{})
-           },
-           body:JSON.stringify({
-             text,
-             referenceDate,
-             apiKey:effectiveKey,
-             model:deepseekModel,
-             baseUrl:deepseekBaseUrl.trim()||undefined
-           })
-         });
-         result=await r.json();
-         if(!r.ok){
-           if(r.status===503||(result.error&&(result.error.includes('API Key')||result.error.includes('尚未配置')))){
-             setApiModalOpen(true);
-           }
-           throw Error(result.error);
-         }
-       }
+       result=await parseOnline({text,referenceDate,key:effectiveKey,model:deepseekModel,baseUrl:deepseekBaseUrl.trim()||undefined});
      }
      setDrafts(result.tasks.map(t=>({...t,id:uid(),status:'todo',source:text,engine:mode})));
      setDraftSource(text);
@@ -292,7 +235,7 @@ export default function Home(){
  </div>
  
  <p className="mode-caption">
-   <span className="mini-dot"/> {`当前快捷提取使用本地离线规则 · DeepSeek 在线 AI ${(deepseekKey||aiReady)?'已就绪':'待配置 (点击齿轮填入 Key)'}`}
+   <span className="mini-dot"/> {`当前快捷提取使用本地离线规则 · DeepSeek 在线 AI ${(deepseekKey||aiReady)?(aiReady?'连接测试已通过':'已填写，尚未验证'):'待配置 (点击齿轮填入 Key)'}`}
  </p>
  <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>在线 AI 模式下，同意将此通知正文发送给模型服务；已移除个人敏感信息。</label>
  
@@ -346,14 +289,14 @@ export default function Home(){
  {view==='tasks'&&<><div className="toolbar"><div className="tabs">{[['all','全部'],['todo','待开始'],['doing','进行中'],['done','已完成'],['uncertain','时间待定']].map(([id,label])=><button className={filter===id?'selected':''} key={id} onClick={()=>setFilter(id)}>{label}</button>)}</div><label className="search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索任务、分类或地点"/></label></div><div className="task-actions"><span>{visible.length} 项任务</span><div><button className="text-button" onClick={exportCalendar}><Download size={15}/>原格式 ICS</button><button className="text-button" onClick={backup}>导出备份</button><button className="text-button" onClick={()=>backupInput.current.click()}>恢复备份</button></div></div>{visible.length?<div className="task-grid">{visible.map(t=>taskCard(t))}</div>:<div className="empty-state"><LayoutGrid size={38}/><h2>{tasks.length?'没有符合条件的任务':'你的第一件事，从通知开始'}</h2><p>提取并确认一条通知，或手动添加课程、作业与活动。</p><button className="button primary" onClick={()=>setView('inbox')}>前往通知工作台</button></div>}</>}
  {view==='calendar'&&<><div className="calendar-toolbar"><div><button className="icon-button" aria-label="上一月" onClick={()=>moveMonth(-1)}><ChevronLeft/></button><h2>{year} 年 {mon} 月</h2><button className="icon-button" aria-label="下一月" onClick={()=>moveMonth(1)}><ChevronRight/></button></div><button className="button secondary" onClick={exportCalendar}><Download size={16}/>原格式 ICS</button></div><div className="calendar-grid">{['周一','周二','周三','周四','周五','周六','周日'].map(s=><div className="weekday" key={s}>{s}</div>)}{Array.from({length:Math.ceil((offset+days)/7)*7},(_,i)=>{const day=i-offset+1;const date=`${month}-${String(day).padStart(2,'0')}`;const inMonth=day>0&&day<=days;return <div key={i} className={'day-cell '+(!inMonth?'outside':'')+(date===chinaToday()?' today':'')}><span>{inMonth?day:''}</span>{inMonth&&tasks.filter(t=>t.when?.slice(0,10)===date&&t.status!=='done').map(t=><button key={t.id} title={t.title} onClick={()=>openEditor(t)}>{t.when.length>10?t.when.slice(11)+' ':''}{t.title}</button>)}</div>})}</div><p className="muted small">截止任务不代表占用整段时间。冲突检查仅针对已填写开始与结束时间的活动；时间待定任务不会显示在日历中。</p>{conflicts>0&&<div className="notice"><AlertTriangle size={17}/>{conflicts} 项活动存在时间重叠，请到“我的任务”查看。</div>}</>}
  {view==='records'&&<><div className="task-actions"><span>当前浏览器的真实操作记录</span><button className="button secondary" onClick={()=>download('CampusFlow-audit.json',JSON.stringify({version:VERSION,exportedAt:new Date().toISOString(),logs},null,2),'application/json')}><Download size={15}/>导出记录</button></div><p className="muted small">本地日志可由设备使用者修改，适合过程复盘，不是不可篡改审计。开发与测试记录见项目材料。</p>{logs.length?<div className="log-list">{[...logs].reverse().map(l=><div key={l.id}><span className="log-dot"/><div><h3>{String(l.action)}</h3><p>{String(l.detail)}</p></div><time>{new Date(l.time).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})}</time></div>)}</div>:<div className="empty-state"><History size={38}/><h2>还没有操作记录</h2><p>解析、保存与修改任务后，记录会出现在这里。</p></div>}</>}
- {view==='guide'&&<div className="guide-layout"><section className="panel guide"><h2>三分钟上手</h2><ol><li><b>放入通知</b><p>复制通知正文，或导入 TXT。当前版本不直接识别 PDF、Word 或截图，可先从文档复制文字。</p></li><li><b>提取候选</b><p>默认使用本地规则。在线 AI 支持 DeepSeek API，可在工作台点击“设置”按钮配置 API Key，或由服务端提供。</p></li><li><b>对照原文确认</b><p>检查行动、时间与地点。证据按钮会高亮原文；没有依据的内容保持空白。手动改动会记录字段名。</p></li><li><b>保存与安排</b><p>在“我的任务”切换状态，或新建“定时活动 / 课程”填写开始、结束时间，检查时间重叠。</p></li><li><b>导出与备份</b><p>点击“导入 / 订阅日历”，下载兼容手机日历的 ICS 文件，或连接独立订阅服务持续更新。“原格式 ICS”仍保留 VTODO 待办格式。JSON 备份可在另一台设备恢复。</p></li></ol></section><aside className="panel guide"><h2>DeepSeek API 接口说明</h2><p>本服务提供完整的 DeepSeek API 接口支持：</p><div className="guide-api-card"><code>POST /api/deepseek/parse</code><p>参数：text (通知), referenceDate (日期), apiKey (可选), model (可选 v4.1Flash、deepseek-chat 或 deepseek-reasoner)</p></div><div className="guide-api-card"><code>POST /api/deepseek/test</code><p>测试 DeepSeek API Key 连通性与模型可用状态。</p></div><h2>这个版本的边界</h2><p>没有自动读取班级群、没有消息推送、没有跨设备云同步，也没有自动 OCR。</p><p>仅浏览器保存任务，清理网站数据会删除记录。请定期导出备份。</p><p>时间均按 Asia/Shanghai 处理。相对日期、教学周、无年份日期都需要你进一步核对。</p></aside></div>}
+ {view==='guide'&&<div className="guide-layout"><section className="panel guide"><h2>三分钟上手</h2><ol><li><b>放入通知</b><p>复制通知正文，或导入 TXT。当前版本不直接识别 PDF、Word 或截图，可先从文档复制文字。</p></li><li><b>提取候选</b><p>默认使用本地规则。在线 AI 支持 DeepSeek API，可在工作台点击“设置”按钮配置 API Key，，由浏览器直接调用模型服务。</p></li><li><b>对照原文确认</b><p>检查行动、时间与地点。证据按钮会高亮原文；没有依据的内容保持空白。手动改动会记录字段名。</p></li><li><b>保存与安排</b><p>在“我的任务”切换状态，或新建“定时活动 / 课程”填写开始、结束时间，检查时间重叠。</p></li><li><b>导出与备份</b><p>点击“导入本地日历”下载 ICS 文件，后续修改需重新导入，可能产生重复。“原格式 ICS”仍保留 VTODO 待办格式。JSON 备份可在另一台设备恢复。</p></li></ol></section><aside className="panel guide"><h2>静态作业版</h2><p>任务和操作记录保存于浏览器。在线 AI 会发送通知正文和密钥到你配置的接口。默认密钥仅在当前页面使用，也可导入外部 AI JSON。</p><h2>这个版本的边界</h2><p>没有自动读取班级群、没有消息推送、没有跨设备云同步，也没有自动 OCR。</p><p>仅浏览器保存任务，清理网站数据会删除记录。请定期导出备份。</p><p>时间均按 Asia/Shanghai 处理。相对日期、教学周、无年份日期都需要你进一步核对。</p></aside></div>}
  <input ref={backupInput} type="file" accept=".json,application/json" hidden onChange={restore}/><footer className="footer"><span>知行 CampusFlow · 校园日程工作台</span><span>条理生活 · 清爽高效</span><span>MVP {VERSION}</span></footer></div></main>
 
  {/* 任务核对与编辑 Modal */}
  {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(null);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle"><div className="modal-heading"><div><h2>核对任务详情</h2><p className="muted small">核实时间与地点，确认后存入清单</p></div><button className="icon-button" autoFocus aria-label="关闭编辑" onClick={()=>setModal(null)}><X/></button></div>{notice&&<p className="modal-message" role="alert">{notice}</p>}<div className="editor-columns"><div className="editor-fields"><label>任务名称<input maxLength={120} value={modal.task.title} onChange={e=>patch('title',e.target.value)}/></label><div className="form-row"><label>任务类型<select value={modal.task.kind} onChange={e=>patch('kind',e.target.value)}>{Object.entries(kindLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label>分类<select value={modal.task.category} onChange={e=>patch('category',e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label></div><div className="field-label">{modal.task.kind==='event'?'开始时间':'截止 / 提醒日期'}<button className="evidence-button" disabled={!modal.task.evidence.when} onClick={()=>setQuote(modal.task.evidence.when)}>查看依据</button></div><div className="form-row"><input aria-label="任务日期" type="date" value={modal.task.when?.slice(0,10)||''} onChange={e=>patch('when',e.target.value?e.target.value+(modal.task.when?.slice(10)||''):null)}/><input aria-label="任务时刻" type="time" disabled={!modal.task.when} value={modal.task.when?.slice(11)||''} onChange={e=>patch('when',modal.task.when.slice(0,10)+(e.target.value?'T'+e.target.value:''))}/></div><p className="small muted">时间留空表示仅日期，不会自动补成午夜。日期留空表示待确认。</p>{modal.task.kind==='event'&&<label>结束时间（冲突检测需要）<input type="datetime-local" value={modal.task.end||''} onChange={e=>patch('end',e.target.value||null)}/></label>}<label>地点 <button className="evidence-button" disabled={!modal.task.evidence.location} onClick={()=>setQuote(modal.task.evidence.location)}>查看依据</button><input value={modal.task.location} maxLength={100} onChange={e=>patch('location',e.target.value)} placeholder="原文未写，可留空"/></label>{modal.task.warnings?.length>0&&<div className="issues">{modal.task.warnings.map((s,i)=><p key={i}>{s}</p>)}</div>}{taskIssues(modal.task,tasks).map((s,i)=><p className="warning-text" key={i}><AlertTriangle size={13}/>{s}</p>)}<p className="small muted">手动修改：{modal.task.manual?.map(f=>({title:'名称',kind:'类型',when:'时间',end:'结束时间',location:'地点',category:'分类'}[f]||f)).join('、')||'无'}</p></div><div className="source-panel"><h3><FileText size={16}/>通知原文<button className="evidence-button" onClick={()=>setQuote(modal.task.evidence.title)}>定位任务依据</button></h3><div className="source-text">{(()=>{const source=modal.task.source||'此任务为手动添加，请核对你的信息来源。';const pos=quote?source.indexOf(quote):-1;return pos>=0?<>{source.slice(0,pos)}<mark>{quote}</mark>{source.slice(pos+quote.length)}</>:source;})()}</div><p className="small muted">解析方式：{engineLabels[modal.task.engine]||modal.task.engine}。引用命中不代表理解正确。</p></div></div><div className="modal-footer"><button type="button" className={`bili-confirm-btn ${confirmed?'confirmed':''}`} onClick={()=>setConfirmed(!confirmed)} aria-pressed={confirmed} role="checkbox" aria-checked={confirmed}><div className="bili-confirm-left"><span className="bili-confirm-checkbox">{confirmed?<Check size={13} strokeWidth={3}/>:null}</span><span className="bili-confirm-text">我已核对原文和修改内容，理解待确认项</span></div><span className="bili-confirm-tag">{confirmed?'已核对':'点击确认'}</span></button><button className="button primary modal-save-btn" onClick={saveTask} disabled={!confirmed}><Check size={16}/>确认保存</button></div></section></div>}
 
  {/* DeepSeek API 配置与调用设置 Modal */}
- {apiModalOpen&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setApiModalOpen(false);}}><section className="modal api-config-modal" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle"><div className="modal-heading"><div><h2 id="apiModalTitle" className="api-modal-title"><span className="bili-badge">API</span> DeepSeek 接口连接配置</h2><p className="muted small">参照官方文档规范，支持 deepseek-flash、deepseek-v4-pro、deepseek-chat 与 deepseek-reasoner</p></div><button className="icon-button" aria-label="关闭设置" onClick={()=>setApiModalOpen(false)}><X/></button></div><div className="api-modal-body"><div className="api-status-banner"><div className="api-status-indicator"><span className={`status-pill ${deepseekKey||aiReady?'online':'offline'}`}>{deepseekKey||aiReady?'● DeepSeek 已就绪':'○ 尚未配置 API Key'}</span><span className="api-status-sub">{deepseekKey?'（使用前端本地保存的密钥）':aiReady?'（使用服务端环境变量配置）':'（填入密钥即可直接调用在线大模型）'}</span></div></div><div className="api-form-group"><label htmlFor="deepseekUrlInput" className="api-label"><span>API 基础地址 (Base URL)</span><a href="https://api-docs.deepseek.com/zh-cn/" target="_blank" rel="noreferrer" className="api-link">DeepSeek 官方文档 <ExternalLink size={12}/></a></label><input id="deepseekUrlInput" type="text" value={deepseekBaseUrl} onChange={e=>setDeepseekBaseUrl(e.target.value)} placeholder="https://api.deepseek.com" className="api-input-plain"/><p className="api-hint">官方接口地址为 https://api.deepseek.com，也支持自定义中转或兼容端点。</p></div><div className="api-form-group"><label htmlFor="deepseekKeyInput" className="api-label"><span>DeepSeek API Key</span><a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer" className="api-link">前往获取 API Key <ExternalLink size={12}/></a></label><div className="api-input-wrapper"><Key size={16} className="api-input-icon"/><input id="deepseekKeyInput" type={showKey?'text':'password'} value={deepseekKey} onChange={e=>setDeepseekKey(e.target.value)} placeholder="sk-..." className="api-input" autoComplete="off"/><button type="button" className="icon-button key-toggle-btn" onClick={()=>setShowKey(!showKey)} aria-label={showKey?'隐藏密钥':'显示密钥'}>{showKey?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><p className="api-hint">密钥安全保存在你的浏览器本地，通过服务端代理请求，避免暴露到公共网络。</p></div><div className="api-form-group"><label className="api-label" htmlFor="modelSelect"><span>调用模型 (Model)</span></label><select id="modelSelect" className="api-select" value={deepseekModel} onChange={e=>setDeepseekModel(e.target.value)}><option value="deepseek-flash">deepseek-flash (v4.1 Flash 极速推荐 · 响应极快)</option><option value="deepseek-v4-pro">deepseek-v4-pro (v4 Pro 旗舰模型 · 精度更佳)</option><option value="deepseek-chat">deepseek-chat (DeepSeek-V3 · 官方通用对话)</option><option value="deepseek-reasoner">deepseek-reasoner (DeepSeek-R1 · 官方深度推理)</option></select></div><div className="api-test-section"><button type="button" className="button secondary test-api-btn" onClick={handleTestDeepSeek} disabled={apiTesting||(!deepseekKey.trim()&&!aiReady)}><Zap size={15}/> {apiTesting?'正在测试连接…':'测试 API 连通性'}</button>{apiTestResult&&<div className={`api-test-alert ${apiTestResult.success?'success':'error'}`}>{apiTestResult.success?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}<span>{apiTestResult.message}</span></div>}</div><div className="api-endpoint-card"><h4><Tv size={14}/> 开发者 API 接口说明</h4><p>本服务后端同时提供标准 REST API，可通过 curl 或前端脚本调用：</p><div className="api-code-block"><code>POST /api/deepseek/parse</code><span className="api-code-note">请求参数：{`{ "text": "通知正文", "referenceDate": "2026-10-20", "apiKey": "sk-...", "model": "deepseek-flash" }`}</span></div></div></div><div className="modal-footer"><button type="button" className="button secondary" onClick={()=>{setDeepseekKey('');safeStorage.removeItem('cf-deepseek-key');safeStorage.removeItem('cf-deepseek-url');setApiTestResult(null);msg('已清除本地 DeepSeek 配置。');}}>清除配置</button><button type="button" className="button primary" onClick={handleSaveDeepSeek}><Check size={16}/> 保存并应用</button></div></section></div>}
+ {apiModalOpen&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setApiModalOpen(false);}}><section className="modal api-config-modal" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle"><div className="modal-heading"><div><h2 id="apiModalTitle" className="api-modal-title"><span className="bili-badge">API</span> DeepSeek 接口连接配置</h2><p className="muted small">参照官方文档规范，支持 deepseek-flash、deepseek-v4-pro、deepseek-chat 与 deepseek-reasoner</p></div><button className="icon-button" aria-label="关闭设置" onClick={()=>setApiModalOpen(false)}><X/></button></div><div className="api-modal-body"><div className="api-status-banner"><div className="api-status-indicator"><span className={`status-pill ${deepseekKey||aiReady?'online':'offline'}`}>{aiReady?'● 连接测试已通过':deepseekKey?'○ 已填写密钥，尚未验证':'○ 尚未配置 API Key'}</span><span className="api-status-sub">{rememberKey?'（已选择在此浏览器记住密钥）':'（密钥仅在当前页面内存使用）'}</span></div></div><div className="api-form-group"><label htmlFor="deepseekUrlInput" className="api-label"><span>API 基础地址 (Base URL)</span><a href="https://api-docs.deepseek.com/zh-cn/" target="_blank" rel="noreferrer" className="api-link">DeepSeek 官方文档 <ExternalLink size={12}/></a></label><input id="deepseekUrlInput" type="text" value={deepseekBaseUrl} onChange={e=>{invalidateAI();setDeepseekBaseUrl(e.target.value);}} placeholder="https://api.deepseek.com" className="api-input-plain"/><p className="api-hint">官方接口地址为 https://api.deepseek.com，也支持自定义中转或兼容端点。</p></div><div className="api-form-group"><label htmlFor="deepseekKeyInput" className="api-label"><span>DeepSeek API Key</span><a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer" className="api-link">前往获取 API Key <ExternalLink size={12}/></a></label><div className="api-input-wrapper"><Key size={16} className="api-input-icon"/><input id="deepseekKeyInput" type={showKey?'text':'password'} value={deepseekKey} onChange={e=>{invalidateAI();setDeepseekKey(e.target.value);}} placeholder="sk-..." className="api-input" autoComplete="off"/><button type="button" className="icon-button key-toggle-btn" onClick={()=>setShowKey(!showKey)} aria-label={showKey?'隐藏密钥':'显示密钥'}>{showKey?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><p className="api-hint">浏览器直接请求配置的模型接口。通知正文和 API Key 会发送到该地址，请确认服务提供方可信。</p></div><label className="consent"><input type="checkbox" checked={rememberKey} onChange={e=>{const checked=e.target.checked;setRememberKey(checked);if(!checked){safeStorage.removeItem('cf-deepseek-key');safeStorage.removeItem('cf-deepseek-remember');}}}/>记住密钥（可选，同源脚本可能读取本地存储；公共设备请勿勾选）</label>{legacyKey&&<div className="api-hint">检测到旧版保存的密钥，尚未载入使用。<button className="text-button" onClick={()=>{invalidateAI();setDeepseekKey(loadLegacyKey(safeStorage));setLegacyKey(false);setRememberKey(false);}}>载入旧密钥 仅本次</button><button className="text-button" onClick={clearConfig}>清除旧配置</button></div>}<div className="api-form-group"><label className="api-label" htmlFor="modelSelect"><span>调用模型 (Model)</span></label><select id="modelSelect" className="api-select" value={deepseekModel} onChange={e=>{invalidateAI();setDeepseekModel(e.target.value);}}><option value="deepseek-flash">deepseek-flash (v4.1 Flash 极速推荐 · 响应极快)</option><option value="deepseek-v4-pro">deepseek-v4-pro (v4 Pro 旗舰模型 · 精度更佳)</option><option value="deepseek-chat">deepseek-chat (DeepSeek-V3 · 官方通用对话)</option><option value="deepseek-reasoner">deepseek-reasoner (DeepSeek-R1 · 官方深度推理)</option></select></div><div className="api-test-section"><button type="button" className="button secondary test-api-btn" onClick={handleTestDeepSeek} disabled={apiTesting||(!deepseekKey.trim()&&!aiReady)}><Zap size={15}/> {apiTesting?'正在测试连接…':'测试 API 连通性'}</button>{apiTestResult&&<div className={`api-test-alert ${apiTestResult.success?'success':'error'}`}>{apiTestResult.success?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}<span>{apiTestResult.message}</span></div>}</div><div className="api-endpoint-card"><h4>静态作业版说明</h4><p>任务和记录保存在当前浏览器。在线 AI 会将通知发送到配置的模型服务。无需自建服务器，也可使用外部 AI JSON 导入。</p></div></div><div className="modal-footer"><button type="button" className="button secondary" onClick={clearConfig}>清除配置</button><button type="button" className="button primary" onClick={handleSaveDeepSeek}><Check size={16}/> 保存并应用</button></div></section></div>}
 
   {/* 醒目轻弹窗通知 Toast / Popup */}
   {notice&&(
@@ -417,5 +360,6 @@ export default function Home(){
 
  </div>;
 }
+
 
 
