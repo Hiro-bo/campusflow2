@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {resolveRelativeDays,datesIn,validateAI} from '../lib/flow.mjs';
+import {readAIConfig,saveAIConfig,clearAIConfig,loadLegacyKey} from '../lib/ai-config.mjs';
+import {testDeepSeek} from '../lib/ai.mjs';
+const storage=()=>{const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>{m.set(k,v);return true;},removeItem:k=>{m.delete(k);return true;}};};
+test('七种相对日期及跨月跨年',()=>{for(const ref of ['2026-10-26','2026-10-31','2026-12-31','2027-01-01'])for(const [word,offset] of [['今天',0],['明天',1],['后天',2],['大后天',3],['昨天',-1],['前天',-2],['大前天',-3]]){const dt=new Date(ref+'T00:00:00Z');dt.setUTCDate(dt.getUTCDate()+offset);assert.deepEqual(resolveRelativeDays(word,ref),[dt.toISOString().slice(0,10)]);assert.equal(datesIn(word+'下午2点',ref,{allowRelative:true})[0].value,dt.toISOString().slice(0,10)+'T14:00');}});
+test('周日的本周一不能变为下周一，限定星期按周一为周首',()=>{assert.deepEqual(resolveRelativeDays('本周一','2026-11-01'),['2026-10-26']);assert.deepEqual(resolveRelativeDays('下周一','2026-11-01'),['2026-11-02']);assert.deepEqual(resolveRelativeDays('上周日','2026-11-01'),['2026-10-25']);assert.deepEqual(resolveRelativeDays('周五','2026-10-26'),[]);});
+test('AI含糊星期不能随意接受推测日期',()=>{const s='请周五提交报告';const r=validateAI({tasks:[{title:'提交报告',kind:'deadline',when:'2026-10-30',evidence:{title:s,when:'周五'}}]},s,'2026-10-26');assert.equal(r.tasks[0].when,null);});
+test('新密钥默认不落盘，明确勾选才保存，取消后清理',()=>{const s=storage();const cfg={key:'fake-key',model:'test-model',url:'https://example.com',remember:false};assert.ok(saveAIConfig(s,cfg));assert.equal(s.getItem('cf-deepseek-key'),null);assert.ok(saveAIConfig(s,{...cfg,remember:true}));assert.equal(readAIConfig(s).key,'fake-key');assert.ok(saveAIConfig(s,cfg));assert.equal(s.getItem('cf-deepseek-key'),null);});
+test('旧密钥不自动使用，可显式载入或清除',()=>{const s=storage();s.setItem('cf-deepseek-key','old-fake');assert.deepEqual(readAIConfig(s),{key:'',remember:false,legacy:true});assert.equal(loadLegacyKey(s),'old-fake');assert.equal(readAIConfig(s).legacy,false);saveAIConfig(s,{key:'new-fake',model:'test',url:'https://example.com',remember:true});assert.ok(clearAIConfig(s));assert.equal(s.getItem('cf-deepseek-key'),null);assert.equal(s.getItem('cf-deepseek-model'),null);});
+test('配置存储失败必须返回失败',()=>{const s={getItem:()=>null,setItem:()=>false,removeItem:()=>false};assert.equal(saveAIConfig(s,{key:'fake',model:'test',url:'',remember:true}),false);assert.equal(clearAIConfig(s),false);});
+test('模拟连接响应不回显服务端可能包含密钥的错误正文',async()=>{await assert.rejects(()=>testDeepSeek({key:'fake',model:'test'},async()=>new Response('fake-secret-provider-echo',{status:500})),e=>e.message==='DEEPSEEK_ERROR_500');});
